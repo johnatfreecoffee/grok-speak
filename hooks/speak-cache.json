@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/johnromano/.grok/bin/grok-speak --cache",
+            "command": "${HOME}/.grok/bin/grok-speak --cache",
             "timeout": 5
           }
         ]
