@@ -11,10 +11,10 @@ Then in any Grok TUI:
 | | |
 |--|--|
 | `/speak` | speak last reply (stops if already talking) |
-| `/speak stop` | cut off |
-| `/speak concise` | one-shot mode (`verbatim` `casual` `full`) |
+| `/speak-stop` | cut off |
+| `/speak-concise` | one-shot mode (also `-verbatim` `-casual` `-full`) |
 | `/speak mode casual` | save default |
-| `/speak settings` | show mode + voice |
+| `/speak-settings` | show mode + voice |
 
 Default mode is **concise** (plain-English spoken brief). Prefs: `~/.grok/speak.toml`.
 
