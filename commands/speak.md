@@ -1,5 +1,5 @@
 ---
-description: Speak the last Grok reply (official Grok voice). Args: stop, settings, verbatim, concise, casual, full, mode <name>
+description: Speak last reply (stops if talking)
 argument-hint: "[stop|settings|verbatim|concise|casual|full]"
 ---
 

@@ -1,9 +1,10 @@
 ---
 name: speak
-description: Speak the last Grok TUI reply with official Grok TTS. Use when the user runs /speak, wants the last response read aloud, or says speak that. Modes: verbatim, concise, casual, full. Pass stop to cut off playback. Pass settings or mode <name> to change defaults.
+description: Speak last reply (stops if talking)
+when-to-use: User runs /speak, says speak that / read it back, or wants Grok TTS of the last reply.
 user-invocable: true
 disable-model-invocation: false
-argument-hint: "[stop|settings|mode|verbatim|concise|casual|full]"
+argument-hint: "[stop|settings|verbatim|concise|casual|full]"
 allowed-tools: run_terminal_command
 ---
 
