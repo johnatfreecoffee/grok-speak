@@ -2,6 +2,8 @@
 name: speak
 description: Speak last reply (stops if talking)
 when-to-use: User runs /speak, says speak that / read it back, or wants Grok TTS of the last reply.
+metadata:
+  short-description: Speak last reply (stops if talking)
 user-invocable: true
 disable-model-invocation: false
 argument-hint: "[stop|settings|verbatim|concise|casual|full]"

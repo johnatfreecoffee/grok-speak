@@ -9,15 +9,17 @@ mkdir -p "$GROK_HOME/bin" "$GROK_HOME/skills/speak" "$GROK_HOME/hooks" "$GROK_HO
 
 ln -sfn "$ROOT/bin/grok-speak" "$GROK_HOME/bin/grok-speak"
 
-# Real skill dir + file symlink. A directory symlink is skipped by Grok's scanner.
+# Copy skill/commands (not symlink). Grok watches ~/.grok and misses target-only edits.
 if [[ -L "$GROK_HOME/skills/speak" ]]; then
   rm -f "$GROK_HOME/skills/speak"
   mkdir -p "$GROK_HOME/skills/speak"
 fi
-ln -sfn "$ROOT/skills/speak/SKILL.md" "$GROK_HOME/skills/speak/SKILL.md"
+rm -f "$GROK_HOME/skills/speak/SKILL.md"
+cp -f "$ROOT/skills/speak/SKILL.md" "$GROK_HOME/skills/speak/SKILL.md"
 
 for cmd in "$ROOT"/commands/*.md; do
-  ln -sfn "$cmd" "$GROK_HOME/commands/${cmd:t}"
+  rm -f "$GROK_HOME/commands/${cmd:t}"
+  cp -f "$cmd" "$GROK_HOME/commands/${cmd:t}"
 done
 
 if [[ -f "$GROK_HOME/hooks/speak-cache.json" && ! -L "$GROK_HOME/hooks/speak-cache.json" ]]; then
