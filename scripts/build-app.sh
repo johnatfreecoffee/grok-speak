@@ -9,11 +9,14 @@ SDK="$(xcrun --sdk macosx --show-sdk-path)"
 ICONSET="$ROOT/app/Resources/GrokSpeak.iconset"
 ICNS="$ROOT/app/Resources/GrokSpeak.icns"
 SRC1024="$ROOT/app/Resources/icon-1024.png"
+COMET="$ROOT/app/Resources/GrokComet.svg"
 
-if [[ ! -f "$SRC1024" ]]; then
-  echo "missing $SRC1024" >&2
+if [[ ! -f "$COMET" ]]; then
+  echo "missing $COMET" >&2
   exit 1
 fi
+
+swift "$ROOT/scripts/make-icon.swift" "$COMET" "$SRC1024"
 
 if [[ ! -f "$ICNS" || "$SRC1024" -nt "$ICNS" ]]; then
   rm -rf "$ICONSET"
