@@ -1,3 +1,6 @@
 .DS_Store
 *.mp3
 __pycache__/
+.build/
+app/Resources/GrokSpeak.iconset/
+app/Resources/GrokSpeak.icns

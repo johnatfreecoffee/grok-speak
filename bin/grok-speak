@@ -67,6 +67,15 @@ def die(msg: str, code: int = 1) -> None:
     raise SystemExit(code)
 
 
+def take_opt(args: list[str], flag: str) -> str | None:
+    if flag not in args:
+        return None
+    i = args.index(flag)
+    if i + 1 >= len(args):
+        die(f"{flag} needs a value")
+    return args[i + 1]
+
+
 def load_settings() -> dict[str, str]:
     out = dict(DEFAULTS)
     if SETTINGS_PATH.exists():
@@ -354,13 +363,24 @@ def rewrite_for_speech(text: str, mode: str, token: str) -> str:
     return text
 
 
-def tts(text: str, voice: str, mode: str) -> None:
+def tts(
+    text: str,
+    voice: str,
+    mode: str,
+    *,
+    play: bool = True,
+    dest: Path | None = None,
+    spoken_out: Path | None = None,
+) -> Path:
     def _handle_stop(_signum, _frame) -> None:
         stop_playback()
         raise SystemExit(0)
 
     signal.signal(signal.SIGTERM, _handle_stop)
     signal.signal(signal.SIGINT, _handle_stop)
+
+    dest = dest or MP3_FILE
+    dest.parent.mkdir(parents=True, exist_ok=True)
 
     token = load_token()
     clean = speakable(text)
@@ -372,6 +392,9 @@ def tts(text: str, voice: str, mode: str) -> None:
         clean = speakable(clean)
     if len(clean) > MAX_CHARS:
         clean = clean[: MAX_CHARS - 1].rsplit(" ", 1)[0] + "…"
+    if spoken_out is not None:
+        spoken_out.parent.mkdir(parents=True, exist_ok=True)
+        spoken_out.write_text(clean)
     status, ctype, _data = curl_json(
         TTS_URL,
         token,
@@ -381,17 +404,20 @@ def tts(text: str, voice: str, mode: str) -> None:
             "language": "en",
             "text_normalization": True,
         },
-        dest=MP3_FILE,
+        dest=dest,
     )
     if status == 401:
         die("Login expired. Send any TUI message so Grok refreshes, then /speak again.")
     if status != 200 or not ctype.startswith("audio/"):
-        err = MP3_FILE.read_text(errors="replace")[:400] if MP3_FILE.exists() else ""
+        err = dest.read_text(errors="replace")[:400] if dest.exists() else ""
         die(f"TTS {status}: {err or 'unexpected response'}")
+    if not play:
+        print(f"Wrote {dest} ({mode}, {voice}, {len(clean)} chars)")
+        return dest
     stop_playback()
     print(f"Speaking ({mode}, {voice})…  /speak or /speak stop to cut off")
     proc = subprocess.Popen(
-        ["afplay", str(MP3_FILE)],
+        ["afplay", str(dest)],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -400,6 +426,7 @@ def tts(text: str, voice: str, mode: str) -> None:
     PID_FILE.unlink(missing_ok=True)
     if rc not in (0, -signal.SIGTERM, -signal.SIGKILL):
         raise SystemExit(rc or 0)
+    return dest
 
 
 def print_settings(settings: dict[str, str]) -> None:
@@ -435,7 +462,9 @@ def main() -> None:
             "Usage: grok-speak [stop|settings|verbatim|concise|casual|full]\n"
             "       grok-speak [--stop] [--settings] [--mode MODE] [--save]\n"
             "                  [--voice NAME] [--stdin] [--file PATH]\n"
-            "Default: speak last Grok TUI reply with official xAI TTS."
+            "                  [--synthesize] [--out MP3] [--spoken-out TXT]\n"
+            "Default: speak last Grok TUI reply with official xAI TTS.\n"
+            "--synthesize writes the MP3 and exits (desktop player uses this)."
         )
         return
     if "--cache" in args:
@@ -457,23 +486,37 @@ def main() -> None:
         print(f"Saved mode = {mode}")
         return
     positional_modes = [a.lower() for a in args if a.lower() in MODES]
-    explicit = bool(positional_modes or "--mode" in args or "--stdin" in args or "--file" in args)
+    synthesize = "--synthesize" in args or "--no-play" in args
+    out_path = take_opt(args, "--out")
+    spoken_path = take_opt(args, "--spoken-out")
+    explicit = bool(
+        positional_modes
+        or "--mode" in args
+        or "--stdin" in args
+        or "--file" in args
+        or synthesize
+        or out_path
+    )
     if is_playing() and not explicit:
         print("Stopped." if stop_playback() else "Nothing playing.")
         return
     if is_playing():
         stop_playback()
     mode, save = parse_mode(args, settings)
-    if "--voice" in args:
-        i = args.index("--voice")
-        if i + 1 >= len(args):
-            die("--voice needs a name")
-        settings["voice"] = args[i + 1]
-        save = True
+    voice = take_opt(args, "--voice")
+    if voice:
+        settings["voice"] = voice
     if save:
         settings["mode"] = mode
         save_settings(settings)
-    tts(resolve_text(args), settings["voice"], mode)
+    tts(
+        resolve_text(args),
+        settings["voice"],
+        mode,
+        play=not synthesize,
+        dest=Path(out_path).expanduser() if out_path else None,
+        spoken_out=Path(spoken_path).expanduser() if spoken_path else None,
+    )
 
 
 if __name__ == "__main__":

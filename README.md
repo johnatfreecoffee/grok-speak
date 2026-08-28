@@ -30,6 +30,23 @@ Default mode is **concise**. Prefs: `~/.grok/speak.toml`. Voice default: **rex**
 
 Esc / TUI Stop kills playback — `afplay` stays in-process.
 
+## Desktop app
+
+**Grok Speak.app** — paste any text and hear it with the same Grok voice.
+
+TUI `/speak` defaults to concise recap. The app defaults to **verbatim**: it reads what you pasted. Play, pause, skip ±15s, scrub, and speed are local (AVPlayer, not `afplay`).
+
+Install puts it in `~/Applications/Grok Speak.app`.
+
+```
+⌘↩ Speak
+⌘. Stop
+⌘⌥← / ⌘⌥→ skip 15s
+⌘L load last Grok reply
+```
+
+`grok-speak --synthesize --out file.mp3` writes audio without playing — that’s what the app uses.
+
 ## Install
 
 ```bash
@@ -40,7 +57,9 @@ cd grok-speak
 
 Then **quit and reopen** Grok so `/speak*` shows in the slash menu.
 
-`install.sh` symlinks:
+`install.sh` also builds **Grok Speak.app** into `~/Applications`.
+
+It symlinks:
 
 - `~/.grok/bin/grok-speak`
 - `~/.grok/skills/speak/SKILL.md`
@@ -61,8 +80,9 @@ grok-speak --stop
 grok-speak concise
 grok-speak mode casual  # save default, don’t speak
 grok-speak --settings
+grok-speak --synthesize verbatim --stdin --out ~/Desktop/out.mp3
 ```
 
 ## Uninstall
 
-Remove the four symlinks under `~/.grok/` and `~/.grok/speak.toml`.
+Remove the four symlinks under `~/.grok/`, `~/.grok/speak.toml`, and `~/Applications/Grok Speak.app`.

@@ -22,5 +22,12 @@ Default: `concise`. Persist in `~/.grok/speak.toml`.
 
 TUI stop/Esc must kill audio because `afplay` stays in the same process group and grok-speak waits on it.
 
+## Desktop app
+`Grok Speak.app` — paste any text and play it locally with skip/seek.
+- Default mode **verbatim** (does not change TUI default `concise`)
+- Same OAuth + `/v1/tts` via `grok-speak --synthesize`
+- AVPlayer: play/pause, ±15s, scrub, speed
+- Does not use `afplay` (no seek)
+
 ## Settings in the TUI
 Grok has no plugin settings pane. `/speak settings` and `/speak mode …` are the TUI controls.
