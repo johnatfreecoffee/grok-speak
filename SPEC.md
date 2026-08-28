@@ -27,6 +27,8 @@ TUI stop/Esc must kill audio because `afplay` stays in the same process group an
 - Default mode **verbatim** (does not change TUI default `concise`)
 - Same OAuth + `/v1/tts` via `grok-speak --synthesize`
 - AVPlayer: play/pause, ±15s, scrub, speed
+- After Speak, show the spoken text (rewritten for concise/casual/full)
+- Word highlight follows playback; click a word to jump
 - Does not use `afplay` (no seek)
 
 ## Settings in the TUI

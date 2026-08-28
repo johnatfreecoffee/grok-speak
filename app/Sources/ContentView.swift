@@ -69,7 +69,9 @@ struct ContentView: View {
             }
             .pickerStyle(.segmented)
 
-            Text(model.mode.hint)
+            Text(model.showingReader
+                 ? "Click a word to jump. Highlight follows playback."
+                 : model.mode.hint)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -80,20 +82,31 @@ struct ContentView: View {
 
     private var editor: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .topLeading) {
-                if model.text.isEmpty {
-                    Text("Paste anything to read aloud. Default is verbatim — it reads the text, it does not recap it.")
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 16)
-                        .allowsHitTesting(false)
+            if model.showingReader, !model.spokenText.isEmpty {
+                SpokenReaderView(
+                    spoken: model.spokenText,
+                    words: model.words,
+                    activeIndex: model.activeWord,
+                    onSelect: { model.jumpToWord($0) }
+                )
+                .padding(.horizontal, 8)
+                .padding(.top, 4)
+            } else {
+                ZStack(alignment: .topLeading) {
+                    if model.text.isEmpty {
+                        Text("Paste anything to read aloud. Default is verbatim — it reads the text, it does not recap it.")
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 16)
+                            .allowsHitTesting(false)
+                    }
+                    TextEditor(text: $model.text)
+                        .font(.system(.body, design: .default))
+                        .scrollContentBackground(.hidden)
+                        .padding(12)
+                        .focused($editorFocused)
+                        .disabled(model.busy)
                 }
-                TextEditor(text: $model.text)
-                    .font(.system(.body, design: .default))
-                    .scrollContentBackground(.hidden)
-                    .padding(12)
-                    .focused($editorFocused)
-                    .disabled(model.busy)
             }
 
             HStack(spacing: 12) {
@@ -101,21 +114,29 @@ struct ContentView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(model.overLimit ? Color.orange : Color.secondary)
                 if model.audioStale {
-                    Text("Text changed — Speak again to refresh audio")
+                    Text("Changed — Speak again to refresh")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Last reply") { model.loadLastReply() }
-                    .disabled(model.busy)
-                Button("Paste") { model.pasteClipboard() }
-                    .disabled(model.busy)
-                Button("Clear") { model.clear() }
-                    .disabled(model.busy || model.text.isEmpty)
+                if model.showingReader {
+                    Button("Edit source") { model.editSource() }
+                        .disabled(model.busy)
+                    Button("Copy") { model.copySpoken() }
+                    Button("Clear") { model.clear() }
+                        .disabled(model.busy)
+                } else {
+                    Button("Last reply") { model.loadLastReply() }
+                        .disabled(model.busy)
+                    Button("Paste") { model.pasteClipboard() }
+                        .disabled(model.busy)
+                    Button("Clear") { model.clear() }
+                        .disabled(model.busy || model.text.isEmpty)
+                }
             }
             .controlSize(.small)
             .padding(.horizontal, 18)
-            .padding(.bottom, 10)
+            .padding(.vertical, 10)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -222,16 +243,6 @@ struct ContentView: View {
                 Spacer()
             }
 
-            if !model.spokenText.isEmpty, model.mode != .verbatim {
-                DisclosureGroup("Spoken recap") {
-                    Text(model.spokenText)
-                        .font(.callout)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 4)
-                }
-                .font(.caption)
-            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
@@ -239,6 +250,9 @@ struct ContentView: View {
     }
 
     private var charLabel: String {
+        if model.showingReader {
+            return "\(model.spokenText.count.formatted()) spoken · \(model.mode.label)"
+        }
         let n = model.charCount.formatted()
         let cap = model.maxChars.formatted()
         return "\(n) / \(cap)"

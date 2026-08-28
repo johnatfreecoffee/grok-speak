@@ -2,6 +2,7 @@
 """Speak the last Grok TUI reply with official xAI TTS (subscription OAuth)."""
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -74,6 +75,124 @@ def take_opt(args: list[str], flag: str) -> str | None:
     if i + 1 >= len(args):
         die(f"{flag} needs a value")
     return args[i + 1]
+
+
+def _time_pair(value) -> tuple[float, float]:
+    if isinstance(value, dict):
+        start = value.get("start", value.get("begin", 0))
+        end = value.get("end", start)
+        return float(start or 0), float(end or start or 0)
+    if isinstance(value, (list, tuple)) and value:
+        start = float(value[0] or 0)
+        end = float(value[1] if len(value) > 1 else start)
+        return start, end
+    if isinstance(value, (int, float)):
+        return float(value), float(value)
+    return 0.0, 0.0
+
+
+def estimate_words(text: str, duration: float | None) -> list[dict]:
+    matches = list(re.finditer(r"\S+", text))
+    if not matches:
+        return []
+    dur = float(duration or 0)
+    if dur <= 0:
+        dur = max(len(matches) * 0.35, 1.0)
+    slice_t = dur / len(matches)
+    words = []
+    t = 0.0
+    for match in matches:
+        words.append(
+            {
+                "text": match.group(),
+                "start": round(t, 4),
+                "end": round(t + slice_t, 4),
+                "from": match.start(),
+                "to": match.end(),
+            }
+        )
+        t += slice_t
+    return words
+
+
+def words_from_chars(chars: list[str], times: list, fallback: str) -> tuple[str, list[dict]]:
+    if not chars:
+        spoken = fallback
+        return spoken, estimate_words(spoken, None)
+    spoken = "".join(chars)
+    n = min(len(chars), len(times)) if times else 0
+    if n == 0:
+        return spoken, estimate_words(spoken, None)
+    words: list[dict] = []
+    i = 0
+    while i < n:
+        if chars[i].isspace():
+            i += 1
+            continue
+        start_i = i
+        start_t, _ = _time_pair(times[i])
+        i += 1
+        while i < n and not chars[i].isspace():
+            i += 1
+        _, end_t = _time_pair(times[i - 1])
+        if end_t < start_t:
+            end_t = start_t
+        words.append(
+            {
+                "text": "".join(chars[start_i:i]),
+                "start": round(float(start_t), 4),
+                "end": round(float(end_t), 4),
+                "from": start_i,
+                "to": i,
+            }
+        )
+    return spoken, words
+
+
+def write_timestamp_sidecar(
+    response_bytes: bytes,
+    dest: Path,
+    timestamps_out: Path,
+    spoken_out: Path | None,
+    fallback: str,
+) -> str:
+    try:
+        obj = json.loads(response_bytes)
+    except json.JSONDecodeError:
+        die(f"TTS timestamps: not JSON ({response_bytes[:200]!r})")
+        return fallback
+    if not isinstance(obj, dict):
+        die("TTS timestamps: unexpected JSON")
+        return fallback
+    audio_b64 = obj.get("audio")
+    if not audio_b64 or not isinstance(audio_b64, str):
+        err = json.dumps(obj)[:400]
+        die(f"TTS timestamps missing audio: {err}")
+        return fallback
+    dest.write_bytes(base64.b64decode(audio_b64))
+    ts = obj.get("audio_timestamps") or {}
+    chars = ts.get("graph_chars") or []
+    if isinstance(chars, str):
+        chars = list(chars)
+    elif isinstance(chars, list):
+        chars = [str(c) for c in chars]
+    else:
+        chars = []
+    times = ts.get("graph_times") or []
+    if not isinstance(times, list):
+        times = []
+    spoken, words = words_from_chars(chars, times, fallback)
+    duration = obj.get("duration")
+    if not words:
+        words = estimate_words(spoken, float(duration) if duration else None)
+    if spoken_out is not None:
+        spoken_out.parent.mkdir(parents=True, exist_ok=True)
+        spoken_out.write_text(spoken)
+    timestamps_out.parent.mkdir(parents=True, exist_ok=True)
+    timestamps_out.write_text(
+        json.dumps({"text": spoken, "duration": duration, "words": words}, ensure_ascii=False)
+    )
+    return spoken
 
 
 def load_settings() -> dict[str, str]:
@@ -371,6 +490,7 @@ def tts(
     play: bool = True,
     dest: Path | None = None,
     spoken_out: Path | None = None,
+    timestamps_out: Path | None = None,
 ) -> Path:
     def _handle_stop(_signum, _frame) -> None:
         stop_playback()
@@ -395,20 +515,29 @@ def tts(
     if spoken_out is not None:
         spoken_out.parent.mkdir(parents=True, exist_ok=True)
         spoken_out.write_text(clean)
-    status, ctype, _data = curl_json(
+    payload = {
+        "text": clean,
+        "voice_id": voice,
+        "language": "en",
+        "text_normalization": True,
+    }
+    if timestamps_out is not None:
+        payload["with_timestamps"] = True
+        print("Fetching Grok voice with word timings…")
+    status, ctype, data = curl_json(
         TTS_URL,
         token,
-        {
-            "text": clean,
-            "voice_id": voice,
-            "language": "en",
-            "text_normalization": True,
-        },
+        payload,
         dest=dest,
     )
     if status == 401:
         die("Login expired. Send any TUI message so Grok refreshes, then /speak again.")
-    if status != 200 or not ctype.startswith("audio/"):
+    if timestamps_out is not None:
+        if status != 200:
+            err = dest.read_text(errors="replace")[:400] if dest.exists() else ""
+            die(f"TTS {status}: {err or 'unexpected response'}")
+        write_timestamp_sidecar(data if data else dest.read_bytes(), dest, timestamps_out, spoken_out, clean)
+    elif status != 200 or not ctype.startswith("audio/"):
         err = dest.read_text(errors="replace")[:400] if dest.exists() else ""
         die(f"TTS {status}: {err or 'unexpected response'}")
     if not play:
@@ -463,6 +592,7 @@ def main() -> None:
             "       grok-speak [--stop] [--settings] [--mode MODE] [--save]\n"
             "                  [--voice NAME] [--stdin] [--file PATH]\n"
             "                  [--synthesize] [--out MP3] [--spoken-out TXT]\n"
+            "                  [--timestamps-out JSON]\n"
             "Default: speak last Grok TUI reply with official xAI TTS.\n"
             "--synthesize writes the MP3 and exits (desktop player uses this)."
         )
@@ -489,6 +619,7 @@ def main() -> None:
     synthesize = "--synthesize" in args or "--no-play" in args
     out_path = take_opt(args, "--out")
     spoken_path = take_opt(args, "--spoken-out")
+    timestamps_path = take_opt(args, "--timestamps-out")
     explicit = bool(
         positional_modes
         or "--mode" in args
@@ -516,6 +647,7 @@ def main() -> None:
         play=not synthesize,
         dest=Path(out_path).expanduser() if out_path else None,
         spoken_out=Path(spoken_path).expanduser() if spoken_path else None,
+        timestamps_out=Path(timestamps_path).expanduser() if timestamps_path else None,
     )
 
 

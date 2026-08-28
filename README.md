@@ -34,7 +34,7 @@ Esc / TUI Stop kills playback — `afplay` stays in-process.
 
 **Grok Speak.app** — paste any text and hear it with the same Grok voice.
 
-TUI `/speak` defaults to concise recap. The app defaults to **verbatim**: it reads what you pasted. Play, pause, skip ±15s, scrub, and speed are local (AVPlayer, not `afplay`).
+TUI `/speak` defaults to concise recap. The app defaults to **verbatim**: it reads what you pasted. Concise / casual / full rewrite first, then you see that spoken text. Play, pause, skip ±15s, scrub, and speed are local (AVPlayer, not `afplay`). Words highlight as they play — click a word to jump.
 
 Install puts it in `~/Applications/Grok Speak.app`.
 

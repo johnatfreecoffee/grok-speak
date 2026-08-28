@@ -87,6 +87,9 @@ final class SpeakModel: ObservableObject {
     @Published var duration: Double = 0
     @Published var hasAudio = false
     @Published var spokenText = ""
+    @Published var words: [SpokenWord] = []
+    @Published var activeWord: Int?
+    @Published var showingReader = false
     @Published var isSeeking = false
 
     let voices = VoiceOption.builtin
@@ -111,6 +114,7 @@ final class SpeakModel: ObservableObject {
     private let grokHome: URL
     private let mp3URL: URL
     private let spokenURL: URL
+    private let timestampsURL: URL
     private let lastReplyURL: URL
 
     init() {
@@ -121,6 +125,7 @@ final class SpeakModel: ObservableObject {
         grokHome = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".grok")
         mp3URL = grokHome.appendingPathComponent("speak-app.mp3")
         spokenURL = grokHome.appendingPathComponent("speak-app.txt")
+        timestampsURL = grokHome.appendingPathComponent("speak-app.json")
         lastReplyURL = grokHome.appendingPathComponent("last-reply.txt")
         let tomlVoice = Self.voiceFromToml(grokHome.appendingPathComponent("speak.toml"))
         voiceId = defaults.string(forKey: "voice") ?? tomlVoice ?? "rex"
@@ -134,8 +139,11 @@ final class SpeakModel: ObservableObject {
     func onAppear() {
         if FileManager.default.fileExists(atPath: mp3URL.path) {
             loadAudio()
-            spokenText = (try? String(contentsOf: spokenURL, encoding: .utf8)) ?? ""
-            status = "Last clip ready — play or skip without re-fetching."
+            loadTimestamps()
+            if !spokenText.isEmpty {
+                showingReader = true
+            }
+            status = "Last clip ready — play, click a word, or skip."
         }
     }
 
@@ -148,6 +156,7 @@ final class SpeakModel: ObservableObject {
             return
         }
         text = body
+        showingReader = false
         error = nil
         status = "Loaded last Grok reply."
     }
@@ -159,14 +168,43 @@ final class SpeakModel: ObservableObject {
             return
         }
         text = paste
+        showingReader = false
         error = nil
         status = "Pasted \(paste.count) characters."
     }
 
     func clear() {
         text = ""
+        showingReader = false
         error = nil
         status = "Paste text, then Speak."
+    }
+
+    func editSource() {
+        showingReader = false
+        error = nil
+        status = "Edit the source, then Speak."
+    }
+
+    func copySpoken() {
+        let body = spokenText.isEmpty ? text : spokenText
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(body, forType: .string)
+        status = "Copied spoken text."
+    }
+
+    func jumpToWord(_ word: SpokenWord) {
+        guard hasAudio else { return }
+        seek(to: word.start)
+        if let idx = words.firstIndex(where: { $0.from == word.from && $0.start == word.start }) {
+            activeWord = idx
+        }
+        if !isPlaying, !busy {
+            player?.play()
+            player?.rate = Float(rate)
+            isPlaying = true
+        }
+        updateNowPlaying()
     }
 
     func handleDrop(_ providers: [NSItemProvider]) -> Bool {
@@ -183,6 +221,7 @@ final class SpeakModel: ObservableObject {
                 guard let url, let body = try? String(contentsOf: url, encoding: .utf8) else { return }
                 Task { @MainActor in
                     self.text = body
+                    self.showingReader = false
                     self.error = nil
                     self.status = "Loaded \(url.lastPathComponent)."
                 }
@@ -194,6 +233,7 @@ final class SpeakModel: ObservableObject {
                 guard let text else { return }
                 Task { @MainActor in
                     self.text = text
+                    self.showingReader = false
                     self.error = nil
                     self.status = "Dropped text."
                 }
@@ -244,6 +284,7 @@ final class SpeakModel: ObservableObject {
             "--voice", voiceId,
             "--out", mp3URL.path,
             "--spoken-out", spokenURL.path,
+            "--timestamps-out", timestampsURL.path,
         ]
         let errPipe = Pipe()
         let outPipe = Pipe()
@@ -320,7 +361,73 @@ final class SpeakModel: ObservableObject {
         let t = min(max(0, seconds), max(duration, 0))
         current = t
         player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        updateActiveWord(at: t)
         updateNowPlaying()
+    }
+
+    private func loadTimestamps() {
+        if let data = try? Data(contentsOf: timestampsURL),
+           let file = try? JSONDecoder().decode(TimestampFile.self, from: data)
+        {
+            spokenText = file.text
+            words = file.words
+            if spokenText.isEmpty {
+                spokenText = (try? String(contentsOf: spokenURL, encoding: .utf8)) ?? ""
+            }
+            if words.isEmpty, !spokenText.isEmpty {
+                words = Self.estimateWords(spokenText, duration: file.duration ?? duration)
+            }
+            return
+        }
+        spokenText = (try? String(contentsOf: spokenURL, encoding: .utf8)) ?? ""
+        words = Self.estimateWords(spokenText, duration: duration)
+    }
+
+    private func updateActiveWord(at time: Double? = nil) {
+        let t = time ?? current
+        guard !words.isEmpty else {
+            activeWord = nil
+            return
+        }
+        var found = 0
+        var lo = 0
+        var hi = words.count - 1
+        while lo <= hi {
+            let mid = (lo + hi) / 2
+            if words[mid].start <= t {
+                found = mid
+                lo = mid + 1
+            } else {
+                hi = mid - 1
+            }
+        }
+        activeWord = found
+    }
+
+    private static func estimateWords(_ text: String, duration: Double) -> [SpokenWord] {
+        let ns = text as NSString
+        var words: [SpokenWord] = []
+        let range = NSRange(location: 0, length: ns.length)
+        ns.enumerateSubstrings(in: range, options: [.byWords, .localized]) { substring, wordRange, _, _ in
+            guard let substring else { return }
+            words.append(
+                SpokenWord(
+                    text: substring,
+                    start: 0,
+                    end: 0,
+                    from: wordRange.location,
+                    to: wordRange.location + wordRange.length
+                )
+            )
+        }
+        let dur = duration > 0 ? duration : max(Double(words.count) * 0.35, 1)
+        guard !words.isEmpty else { return [] }
+        let slice = dur / Double(words.count)
+        for i in words.indices {
+            words[i].start = slice * Double(i)
+            words[i].end = slice * Double(i + 1)
+        }
+        return words
     }
 
     private func processFinished(_ proc: Process) {
@@ -339,12 +446,13 @@ final class SpeakModel: ObservableObject {
             return
         }
         fingerprint = currentFingerprint
-        spokenText = (try? String(contentsOf: spokenURL, encoding: .utf8)) ?? ""
+        loadTimestamps()
+        showingReader = !spokenText.isEmpty
         loadAudio()
         player?.play()
         player?.rate = Float(rate)
         isPlaying = true
-        status = "\(mode.label) · \(currentVoiceName)"
+        status = "\(mode.label) · \(currentVoiceName) · click a word to jump"
         updateNowPlaying()
     }
 
@@ -372,7 +480,7 @@ final class SpeakModel: ObservableObject {
         duration = 0
 
         timeObs = newPlayer.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
+            forInterval: CMTime(seconds: 0.05, preferredTimescale: 600),
             queue: .main
         ) { [weak self] time in
             Task { @MainActor in
@@ -383,6 +491,7 @@ final class SpeakModel: ObservableObject {
                     self.duration = d
                 }
                 self.isPlaying = self.player?.rate ?? 0 > 0
+                self.updateActiveWord(at: self.current)
             }
         }
 
