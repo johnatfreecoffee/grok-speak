@@ -30,24 +30,9 @@ Default mode is **concise**. Prefs: `~/.grok/speak.toml`. Voice default: **rex**
 
 Esc / TUI Stop kills playback — `afplay` stays in-process.
 
-## Desktop app
+The **player** is [Grok Desk](https://github.com/johnatfreecoffee/grok-desk) — Concise / Casual / Full on each reply. This repo is the TTS engine.
 
-**Grok Speak.app** — paste any text and hear it with the same Grok voice.
-
-TUI `/speak` defaults to concise recap. The app defaults to **verbatim**: it reads what you pasted. Concise / casual / full rewrite first, then you see that spoken text. Play, pause, skip ±15s, scrub, and speed are local (AVPlayer, not `afplay`). Words highlight as they play — click a word to jump.
-
-Clips are saved in `~/.grok/speak-history/`. Repeat / History plays the file — no new TTS call. **New take** (`⌘⌥↩`) fetches a fresh one.
-
-Install puts it in `~/Applications/Grok Speak.app`.
-
-```
-⌘↩ Speak
-⌘. Stop
-⌘⌥← / ⌘⌥→ skip 15s
-⌘L load last Grok reply
-```
-
-`grok-speak --synthesize --out file.mp3` writes audio without playing — that’s what the app uses.
+`grok-speak --synthesize --out file.mp3` writes audio without playing (Desk uses this).
 
 ## Install
 
@@ -59,9 +44,7 @@ cd grok-speak
 
 Then **quit and reopen** Grok so `/speak*` shows in the slash menu.
 
-`install.sh` also builds **Grok Speak.app** into `~/Applications`.
-
-It symlinks:
+It installs:
 
 - `~/.grok/bin/grok-speak`
 - `~/.grok/skills/speak/SKILL.md`
@@ -87,4 +70,4 @@ grok-speak --synthesize verbatim --stdin --out ~/Desktop/out.mp3
 
 ## Uninstall
 
-Remove the four symlinks under `~/.grok/`, `~/.grok/speak.toml`, and `~/Applications/Grok Speak.app`.
+Remove the copies under `~/.grok/` (`bin/grok-speak`, `skills/speak`, `commands/speak*.md`, `hooks/speak-cache.json`) and `~/.grok/speak.toml`.

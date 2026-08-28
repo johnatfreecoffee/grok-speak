@@ -38,15 +38,9 @@ print "  $GROK_HOME/hooks/speak-cache.json"
 print "  $GROK_HOME/commands/speak*.md"
 print "  $GROK_HOME/speak.toml"
 
-print ""
-print "Building Grok Speak.app…"
-APP="$("$ROOT/scripts/build-app.sh")"
 DEST="$HOME/Applications/Grok Speak.app"
-pkill -f '/Grok Speak.app/Contents/MacOS/GrokSpeak' 2>/dev/null || true
-sleep 0.2
-mkdir -p "$HOME/Applications"
-rm -rf "$DEST"
-cp -R "$APP" "$DEST"
-codesign --force --deep --sign - "$DEST" >/dev/null
-open "$DEST"
-print "  $DEST"
+if [[ -e "$DEST" ]]; then
+  pkill -f '/Grok Speak.app/Contents/MacOS/GrokSpeak' 2>/dev/null || true
+  rm -rf "$DEST"
+  print "  removed leftover $DEST (player is Grok Desk now)"
+fi
