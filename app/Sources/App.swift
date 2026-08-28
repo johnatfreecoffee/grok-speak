@@ -10,6 +10,7 @@ extension Notification.Name {
     static let skipBack = Notification.Name("dev.freecoffee.GrokSpeak.skipBack")
     static let skipForward = Notification.Name("dev.freecoffee.GrokSpeak.skipForward")
     static let loadLastReply = Notification.Name("dev.freecoffee.GrokSpeak.loadLastReply")
+    static let speakForce = Notification.Name("dev.freecoffee.GrokSpeak.speakForce")
 }
 
 @main
@@ -20,7 +21,7 @@ struct GrokSpeakApp: App {
         WindowGroup {
             ContentView()
         }
-        .defaultSize(width: 740, height: 660)
+        .defaultSize(width: 980, height: 660)
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Speak") {
@@ -28,6 +29,10 @@ struct GrokSpeakApp: App {
                     NotificationCenter.default.post(name: .speakNow, object: nil)
                 }
                 .keyboardShortcut(.return, modifiers: .command)
+                Button("New take") {
+                    NotificationCenter.default.post(name: .speakForce, object: nil)
+                }
+                .keyboardShortcut(.return, modifiers: [.command, .option])
                 Button("Stop") {
                     NotificationCenter.default.post(name: .stopNow, object: nil)
                 }

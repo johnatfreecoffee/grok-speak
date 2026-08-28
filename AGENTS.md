@@ -10,7 +10,7 @@ Live binary is this repo. `~/.grok/bin/grok-speak` is a symlink — edit here.
 - `/speak stop` and a second `/speak` must kill `afplay` and the TTS curl
 - Wait on `afplay` so TUI Esc/stop kills playback
 - User prefs: `~/.grok/speak.toml` (not git)
-- Desktop app: `app/` — paste + verbatim + AVPlayer skip/seek. After Speak, show spoken text with word highlight + click-to-jump (`--timestamps-out`). Build: `./scripts/build-app.sh`. Install copies to `~/Applications/Grok Speak.app`. App default mode is verbatim and must not overwrite TUI `speak.toml` mode.
+- Desktop app: `app/` — paste + verbatim + AVPlayer skip/seek. After Speak, show spoken text with word highlight + click-to-jump (`--timestamps-out`). Clips saved in `~/.grok/speak-history/`; Play/repeat is local. Build: `./scripts/build-app.sh`. Install copies to `~/Applications/Grok Speak.app`. App default mode is verbatim and must not overwrite TUI `speak.toml` mode.
 
 ## Don't
 - Don't use macOS `say`

@@ -8,12 +8,19 @@ struct ContentView: View {
     @FocusState private var editorFocused: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            editor
-            Divider()
-            player
+        HStack(spacing: 0) {
+            if model.showHistory {
+                HistoryPane(model: model)
+                    .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
+                Divider()
+            }
+            VStack(spacing: 0) {
+                header
+                Divider()
+                editor
+                Divider()
+                player
+            }
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
@@ -23,6 +30,9 @@ struct ContentView: View {
         .onDrop(of: [.fileURL, .plainText, .utf8PlainText], isTargeted: nil, perform: model.handleDrop)
         .onReceive(NotificationCenter.default.publisher(for: .speakNow)) { _ in
             Task { await model.speak() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .speakForce)) { _ in
+            Task { await model.speak(force: true) }
         }
         .onReceive(NotificationCenter.default.publisher(for: .stopNow)) { _ in
             model.stop()
@@ -53,6 +63,12 @@ struct ContentView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Spacer()
+                Button {
+                    model.showHistory.toggle()
+                } label: {
+                    Image(systemName: "clock")
+                }
+                .help("History")
                 Picker("Voice", selection: $model.voiceId) {
                     ForEach(model.voices) { voice in
                         Text(voice.menuTitle).tag(voice.voiceId)
@@ -221,6 +237,14 @@ struct ContentView: View {
                     .disabled(model.busy)
                     .keyboardShortcut(.return, modifiers: .command)
 
+                    if model.hasAudio, !model.audioStale {
+                        Button("New take") {
+                            Task { await model.speak(force: true) }
+                        }
+                        .help("Fetch a new TTS clip even if this one is saved")
+                        .disabled(model.busy)
+                    }
+
                     if model.hasAudio || model.isPlaying {
                         Button("Stop") { model.stop() }
                     }
@@ -256,5 +280,84 @@ struct ContentView: View {
         let n = model.charCount.formatted()
         let cap = model.maxChars.formatted()
         return "\(n) / \(cap)"
+    }
+}
+
+struct HistoryPane: View {
+    @ObservedObject var model: SpeakModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("History")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    model.revealHistoryFolder()
+                } label: {
+                    Image(systemName: "folder")
+                }
+                .buttonStyle(.plain)
+                .help("Open saved clips folder")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            if model.clips.isEmpty {
+                Text("Saved clips land here after Speak. Play never makes a new call.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(14)
+                Spacer()
+            } else {
+                List {
+                    ForEach(model.clips) { clip in
+                        HistoryRow(clip: clip, voiceName: model.voices.first(where: { $0.voiceId == clip.voice })?.name ?? clip.voice)
+                            .listRowBackground(
+                                clip.id == model.selectedClipId
+                                    ? sky.opacity(0.16)
+                                    : Color.clear
+                            )
+                            .contentShape(Rectangle())
+                            .onTapGesture { model.openClip(clip, autoplay: false) }
+                            .contextMenu {
+                                Button("Play") { model.openClip(clip, autoplay: true) }
+                                Button("Show in Finder") { model.revealClip(clip) }
+                                Divider()
+                                Button("Delete", role: .destructive) { model.deleteClip(clip) }
+                            }
+                    }
+                    .onDelete { indexSet in
+                        for i in indexSet.sorted(by: >) {
+                            model.deleteClip(model.clips[i])
+                        }
+                    }
+                }
+                .listStyle(.sidebar)
+            }
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
+struct HistoryRow: View {
+    let clip: HistoryClip
+    let voiceName: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(clip.title.isEmpty ? "Untitled clip" : clip.title)
+                .font(.callout)
+                .lineLimit(2)
+            Text("\(clip.mode.capitalized) · \(voiceName) · \(formatTime(clip.duration))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(clip.created.formatted(date: .abbreviated, time: .shortened))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 2)
     }
 }

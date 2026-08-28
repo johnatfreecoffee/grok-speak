@@ -91,6 +91,11 @@ final class SpeakModel: ObservableObject {
     @Published var activeWord: Int?
     @Published var showingReader = false
     @Published var isSeeking = false
+    @Published var clips: [HistoryClip] = []
+    @Published var selectedClipId: String?
+    @Published var showHistory: Bool {
+        didSet { UserDefaults.standard.set(showHistory, forKey: "showHistory") }
+    }
 
     let voices = VoiceOption.builtin
     let rates: [Double] = [0.75, 1, 1.25, 1.5, 2]
@@ -105,13 +110,21 @@ final class SpeakModel: ObservableObject {
         voices.first(where: { $0.voiceId == voiceId })?.name ?? voiceId
     }
 
-    private var currentFingerprint: String { "\(mode.rawValue)|\(voiceId)|\(text)" }
+    private var currentFingerprint: String {
+        ClipLibrary.fingerprint(
+            mode: mode.rawValue,
+            voice: voiceId,
+            text: text.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
     private var fingerprint = ""
     private var player: AVPlayer?
     private var timeObs: Any?
     private var endObs: NSObjectProtocol?
     private var process: Process?
+    private var playingURL: URL?
     private let grokHome: URL
+    private let library: ClipLibrary
     private let mp3URL: URL
     private let spokenURL: URL
     private let timestampsURL: URL
@@ -122,7 +135,9 @@ final class SpeakModel: ObservableObject {
         let savedMode = SpeakMode(rawValue: defaults.string(forKey: "mode") ?? "") ?? .verbatim
         mode = savedMode
         rate = defaults.object(forKey: "rate") as? Double ?? 1
+        showHistory = defaults.object(forKey: "showHistory") as? Bool ?? true
         grokHome = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".grok")
+        library = ClipLibrary(grokHome: grokHome)
         mp3URL = grokHome.appendingPathComponent("speak-app.mp3")
         spokenURL = grokHome.appendingPathComponent("speak-app.txt")
         timestampsURL = grokHome.appendingPathComponent("speak-app.json")
@@ -137,13 +152,18 @@ final class SpeakModel: ObservableObject {
     }
 
     func onAppear() {
+        clips = library.load()
+        if let latest = clips.first, library.filesExist(latest) {
+            openClip(latest, autoplay: false)
+            status = "Saved clip ready — play is local, no new call."
+            return
+        }
         if FileManager.default.fileExists(atPath: mp3URL.path) {
-            loadAudio()
-            loadTimestamps()
-            if !spokenText.isEmpty {
-                showingReader = true
-            }
-            status = "Last clip ready — play, click a word, or skip."
+            loadTimestamps(from: timestampsURL)
+            loadAudio(from: mp3URL)
+            if !spokenText.isEmpty { showingReader = true }
+            archiveCurrentIfNeeded(skipIfCached: true)
+            status = "Last clip ready — play is local, no new call."
         }
     }
 
@@ -243,7 +263,7 @@ final class SpeakModel: ObservableObject {
         return false
     }
 
-    func speak() async {
+    func speak(force: Bool = false) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             loadLastReply()
@@ -251,6 +271,20 @@ final class SpeakModel: ObservableObject {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
         guard !busy else { return }
+
+        let hash = ClipLibrary.fingerprint(mode: mode.rawValue, voice: voiceId, text: body)
+        if !force, hasAudio, fingerprint == hash {
+            showingReader = true
+            seek(to: 0)
+            if !isPlaying { togglePlay() }
+            status = "Playing saved clip — no new TTS call."
+            return
+        }
+        if !force, let clip = library.clip(matching: hash, in: clips) {
+            openClip(clip, autoplay: true)
+            status = "Playing saved clip — no new TTS call."
+            return
+        }
 
         let bin = grokSpeakBin()
         guard FileManager.default.isExecutableFile(atPath: bin.path) else {
@@ -365,12 +399,98 @@ final class SpeakModel: ObservableObject {
         updateNowPlaying()
     }
 
+    func openClip(_ clip: HistoryClip, autoplay: Bool) {
+        stopSynth()
+        player?.pause()
+        isPlaying = false
+        selectedClipId = clip.id
+        if let source = try? String(contentsOf: library.sourceURL(for: clip.id), encoding: .utf8),
+           !source.isEmpty
+        {
+            text = source
+        }
+        if let m = SpeakMode(rawValue: clip.mode) {
+            mode = m
+        }
+        voiceId = clip.voice
+        loadTimestamps(from: library.timestampsURL(for: clip.id))
+        fingerprint = clip.fingerprint
+        showingReader = !spokenText.isEmpty
+        loadAudio(from: library.mp3URL(for: clip.id))
+        if duration == 0, clip.duration > 0 { duration = clip.duration }
+        error = nil
+        status = "\(clip.mode.capitalized) · saved \(clip.created.formatted(date: .abbreviated, time: .shortened))"
+        if autoplay {
+            player?.play()
+            player?.rate = Float(rate)
+            isPlaying = true
+        }
+        updateNowPlaying()
+    }
+
+    func deleteClip(_ clip: HistoryClip) {
+        if selectedClipId == clip.id {
+            tearDownPlayer()
+            hasAudio = false
+            showingReader = false
+            spokenText = ""
+            words = []
+            selectedClipId = nil
+            fingerprint = ""
+        }
+        library.delete(clip)
+        clips.removeAll { $0.id == clip.id }
+        library.save(clips)
+        status = "Deleted clip."
+    }
+
+    func revealClip(_ clip: HistoryClip) {
+        NSWorkspace.shared.activateFileViewerSelecting([library.mp3URL(for: clip.id)])
+    }
+
+    func revealHistoryFolder() {
+        try? FileManager.default.createDirectory(at: library.dir, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(library.dir)
+    }
+
+    private func archiveCurrentIfNeeded(skipIfCached: Bool) {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard FileManager.default.fileExists(atPath: mp3URL.path), !body.isEmpty else { return }
+        let hash = fingerprint.isEmpty ? currentFingerprint : fingerprint
+        if skipIfCached, library.clip(matching: hash, in: clips) != nil { return }
+        do {
+            let clip = try library.add(
+                source: body,
+                spoken: spokenText.isEmpty ? body : spokenText,
+                mode: mode.rawValue,
+                voice: voiceId,
+                fingerprint: hash,
+                duration: duration,
+                mp3: mp3URL,
+                timestamps: timestampsURL
+            )
+            clips.insert(clip, at: 0)
+            library.save(clips)
+            selectedClipId = clip.id
+            fingerprint = hash
+        } catch {
+            self.error = "Could not save clip to history."
+        }
+    }
+
     private func loadTimestamps() {
-        if let data = try? Data(contentsOf: timestampsURL),
+        loadTimestamps(from: timestampsURL)
+    }
+
+    private func loadTimestamps(from url: URL) {
+        if let data = try? Data(contentsOf: url),
            let file = try? JSONDecoder().decode(TimestampFile.self, from: data)
         {
             spokenText = file.text
             words = file.words
+            if let d = file.duration, d > 0 {
+                duration = d
+            }
             if spokenText.isEmpty {
                 spokenText = (try? String(contentsOf: spokenURL, encoding: .utf8)) ?? ""
             }
@@ -446,13 +566,19 @@ final class SpeakModel: ObservableObject {
             return
         }
         fingerprint = currentFingerprint
-        loadTimestamps()
+        loadTimestamps(from: timestampsURL)
         showingReader = !spokenText.isEmpty
-        loadAudio()
+        archiveCurrentIfNeeded(skipIfCached: false)
+        if let clip = clips.first, library.filesExist(clip) {
+            loadAudio(from: library.mp3URL(for: clip.id))
+            selectedClipId = clip.id
+        } else {
+            loadAudio(from: mp3URL)
+        }
         player?.play()
         player?.rate = Float(rate)
         isPlaying = true
-        status = "\(mode.label) · \(currentVoiceName) · click a word to jump"
+        status = "\(mode.label) · \(currentVoiceName) · saved locally"
         updateNowPlaying()
     }
 
@@ -466,12 +592,18 @@ final class SpeakModel: ObservableObject {
     }
 
     private func loadAudio() {
+        loadAudio(from: playingURL ?? mp3URL)
+    }
+
+    private func loadAudio(from url: URL) {
         tearDownPlayer()
-        guard FileManager.default.fileExists(atPath: mp3URL.path) else {
+        guard FileManager.default.fileExists(atPath: url.path) else {
             hasAudio = false
+            playingURL = nil
             return
         }
-        let item = AVPlayerItem(url: mp3URL)
+        playingURL = url
+        let item = AVPlayerItem(url: url)
         let newPlayer = AVPlayer(playerItem: item)
         newPlayer.actionAtItemEnd = .pause
         player = newPlayer

@@ -36,6 +36,8 @@ Esc / TUI Stop kills playback — `afplay` stays in-process.
 
 TUI `/speak` defaults to concise recap. The app defaults to **verbatim**: it reads what you pasted. Concise / casual / full rewrite first, then you see that spoken text. Play, pause, skip ±15s, scrub, and speed are local (AVPlayer, not `afplay`). Words highlight as they play — click a word to jump.
 
+Clips are saved in `~/.grok/speak-history/`. Repeat / History plays the file — no new TTS call. **New take** (`⌘⌥↩`) fetches a fresh one.
+
 Install puts it in `~/Applications/Grok Speak.app`.
 
 ```

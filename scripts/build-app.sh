@@ -47,6 +47,7 @@ swiftc -O -parse-as-library \
   -framework AVFoundation \
   -framework MediaPlayer \
   -framework Combine \
+  -framework CryptoKit \
   -o "$BIN" \
   "$ROOT"/app/Sources/*.swift
 

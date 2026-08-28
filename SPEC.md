@@ -29,6 +29,7 @@ TUI stop/Esc must kill audio because `afplay` stays in the same process group an
 - AVPlayer: play/pause, ±15s, scrub, speed
 - After Speak, show the spoken text (rewritten for concise/casual/full)
 - Word highlight follows playback; click a word to jump
+- Clips saved in `~/.grok/speak-history/` — Play/repeat is local; Speak reuses a matching clip
 - Does not use `afplay` (no seek)
 
 ## Settings in the TUI
