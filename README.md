@@ -1,73 +1,12 @@
 # grok-speak
 
-Official **Grok voice** for [Grok Build](https://x.ai/build) TUI replies.
+Moved into **[Grok Desk](https://github.com/johnatfreecoffee/grok-desk)** as `tools/speak`.
 
-Not macOS `say`. Real xAI TTS (`POST /v1/tts`) using your **Grok login** — same OAuth session as the TUI. No console API key.
+This repo is a stub. Speak TTS (subscription, same Grok login) ships with Grok Desk.
 
-Built with Grok Build.
+- Engine: `tools/speak/` in grok-desk
+- Player: per-reply Concise / Casual / Full in Desk
+- TUI `/speak`: Settings → Speak → Install TUI `/speak`
+- Prefs still: `~/.grok/speak.toml`
 
-| | |
-|--|--|
-| **Repo** | https://github.com/johnatfreecoffee/grok-speak |
-| **License** | [MIT](LICENSE) |
-| **Requires** | macOS + [Grok CLI](https://x.ai/build) logged in (`grok login`) |
-
-## What you get
-
-After a turn finishes, speak it:
-
-| Command | |
-|--|--|
-| `/speak` | speak last reply (stops if already talking) |
-| `/speak-stop` | cut off |
-| `/speak-concise` | short plain-English brief |
-| `/speak-casual` | like telling a friend |
-| `/speak-verbatim` | read the reply |
-| `/speak-full` | whole reply as spoken English |
-| `/speak-settings` | show mode + voice |
-
-Default mode is **concise**. Prefs: `~/.grok/speak.toml`. Voice default: **rex**.
-
-Esc / TUI Stop kills playback — `afplay` stays in-process.
-
-The **player** is [Grok Desk](https://github.com/johnatfreecoffee/grok-desk) — Concise / Casual / Full on each reply. This repo is the TTS engine.
-
-`grok-speak --synthesize --out file.mp3` writes audio without playing (Desk uses this).
-
-## Install
-
-```bash
-git clone https://github.com/johnatfreecoffee/grok-speak.git
-cd grok-speak
-./scripts/install.sh
-```
-
-Then **quit and reopen** Grok so `/speak*` shows in the slash menu.
-
-It installs:
-
-- `~/.grok/bin/grok-speak`
-- `~/.grok/skills/speak/SKILL.md`
-- `~/.grok/commands/speak*.md`
-- `~/.grok/hooks/speak-cache.json`
-
-## How it works
-
-1. A Grok **Stop hook** caches `lastAssistantMessage` to `~/.grok/last-reply.txt`
-2. `/speak` (or `grok-speak`) reads that
-3. Non-verbatim modes rewrite via chat completions into something you’d actually say
-4. TTS with the Grok login token
-5. `afplay` — wait, same process group, so stop works
-
-```bash
-grok-speak              # saved mode
-grok-speak --stop
-grok-speak concise
-grok-speak mode casual  # save default, don’t speak
-grok-speak --settings
-grok-speak --synthesize verbatim --stdin --out ~/Desktop/out.mp3
-```
-
-## Uninstall
-
-Remove the copies under `~/.grok/` (`bin/grok-speak`, `skills/speak`, `commands/speak*.md`, `hooks/speak-cache.json`) and `~/.grok/speak.toml`.
+Do not clone this repo for the engine.
